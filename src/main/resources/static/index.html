@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザー管理システム</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        #userList { margin-top: 20px; border-collapse: collapse; width: 100%; }
+        #userList th, #userList td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #userList th { background-color: #f2f2f2; }
+        button { margin-top: 10px; padding: 8px 15px; cursor: pointer; }
+        input[type="text"] { padding: 8px; margin-right: 5px; }
+    </style>
+</head>
+<body>
+<h1>ユーザー管理システム</h1>
+
+<h2>ユーザー登録</h2>
+<input type="text" id="nameInput" placeholder="名前">
+<input type="text" id="emailInput" placeholder="メールアドレス">
+<button onclick="addUser()">ユーザー追加</button>
+
+<h2>ユーザー一覧</h2>
+<table id="userList">
+    <thead>
+    <tr>
+        <th>ID</th>
+        <th>名前</th>
+        <th>メールアドレス</th>
+        <th>操作</th>
+    </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+<script>
+    const API_BASE_URL = '/api/users'; // Spring BootのAPIエンドポイント
+
+    // ユーザー一覧を取得して表示する関数
+    async function fetchUsers() {
+        try {
+            const response = await fetch(API_BASE_URL);
+            const users = await response.json();
+            const userListBody = document.querySelector('#userList tbody');
+            userListBody.innerHTML = ''; // 一旦クリア
+
+            users.forEach(user => {
+                const row = userListBody.insertRow();
+                row.insertCell(0).textContent = user.id;
+                row.insertCell(1).textContent = user.name;
+                row.insertCell(2).textContent = user.email;
+
+                const actionCell = row.insertCell(3);
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = '削除';
+                deleteButton.onclick = () => deleteUser(user.id);
+                actionCell.appendChild(deleteButton);
+            });
+        } catch (error) {
+            console.error('ユーザーの取得中にエラーが発生しました:', error);
+      }
+}
+
+        // ユーザーを追加する関数
+        async function addUser() {
+            const name = document.getElementById('nameInput').value;
+            const email = document.getElementById('emailInput').value;
+
+            if (!name || !email) {
+                alert('名前とメールアドレスを入力してください。');
+                return;
+            }
+
+            try {
+                const response = await fetch(API_BASE_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, email })
+                });
+                if (response.ok) {
+                    document.getElementById('nameInput').value = '';
+                    document.getElementById('emailInput').value = '';
+                    fetchUsers(); // 追加後、一覧を再読み込み
+                } else {
+                    alert('ユーザーの追加に失敗しました。');
+                }
+            } catch (error) {
+                console.error('ユーザーの追加中にエラーが発生しました:', error);
+            }
+        }
+
+        // ユーザーを削除する関数
+        async function deleteUser(id) {
+            if (!confirm('本当にこのユーザーを削除しますか？')) {
+                return;
+            }
+            try {
+                const response = await fetch(`<span class="math-inline">\{API\_BASE\_URL\}/</span>{id}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    fetchUsers(); // 削除後、一覧を再読み込み
+                } else {
+                    alert('ユーザーの削除に失敗しました。');
+                }
+            } catch (error) {
+                console.error('ユーザーの削除中にエラーが発生しました:', error);
+            }
+        }
+
+        // ページロード時にユーザー一覧を読み込む
+        document.addEventListener('DOMContentLoaded', fetchUsers);
+</script>
+</body>
+</html>
+```
