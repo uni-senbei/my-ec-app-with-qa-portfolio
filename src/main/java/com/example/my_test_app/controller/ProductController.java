@@ -10,6 +10,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,5 +46,19 @@ public class ProductController {
         Optional<Product> product = productRepository.findById(id); // IDで商品を検索
         return product.map(ResponseEntity::ok) // 商品が見つかれば200 OKと商品を返す
                 .orElse(ResponseEntity.notFound().build()); // 見つからなければ404 Not Foundを返す
-    }
-}
+    } // <<< ここに } が必要でした！ getProductById メソッドの閉じ括弧
+
+    /**
+     * 新しい商品を追加するAPI
+     * POST /api/products
+     * @param product 登録する商品情報
+     * @return 登録された商品情報 (IDが付与されたもの)
+     */
+    @PostMapping // /api/products へのPOSTリクエスト
+    @ResponseStatus(HttpStatus.CREATED) // HTTPステータスコード 201 Created を返す
+    public Product createProduct(@RequestBody Product product){
+        // ProductRepositoryのsaveメソッドを使ってDBに保存し、保存されたエンティティを返す
+        return productRepository.save(product);
+    } // <<< createProduct メソッドの閉じ括弧
+
+} // <<< ProductController クラス全体の閉じ括弧

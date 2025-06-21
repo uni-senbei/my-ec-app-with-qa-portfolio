@@ -30,8 +30,4 @@ public class Product {
     @Column(nullable = false)
     private ProductType type;
 
-    public enum ProductType {
-        ONE_TIME,
-        SUBSCRIPTION
     }
-}
