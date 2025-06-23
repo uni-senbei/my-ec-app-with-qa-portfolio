@@ -1,7 +1,8 @@
-package com.example.mytestapp.controller;
+/*
+package com.example.my_test_app.controller;
 
-import com.example.mytestapp.entity.User;
-import com.example.mytestapp.repository.UserRepository;
+import com.example.my_test_app.model.User;
+import com.example.my_test_app.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -59,3 +60,4 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 }
+*/

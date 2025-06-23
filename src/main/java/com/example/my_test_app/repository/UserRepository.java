@@ -1,6 +1,6 @@
-package com.example.mytestapp.repository;
+package com.example.my_test_app.repository;
 
-import com.example.mytestapp.entity.User;
+import com.example.my_test_app.model.User; // この行に書き換える
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
