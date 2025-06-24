@@ -1,15 +1,13 @@
 package com.example.my_test_app.model;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data; // @Getter, @Setter, @EqualsAndHashCode, @ToStringを含む
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 @Entity
-@Table(name = "users") // 'user' はDBの予約語と被る可能性があるので 'users' が一般的
-@Getter
-@Setter
+@Table(name = "users") // テーブル名を"user"ではなく"users"にする（SQL予約語との衝突を避けるため）
+@Data // @Getter, @Setter, @EqualsAndHashCode, @ToStringを自動生成
 @NoArgsConstructor
 @AllArgsConstructor
 public class User {
@@ -18,24 +16,25 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
     @Column(nullable = false, unique = true) // ユーザー名は必須、かつユニーク
-    private String name; // 'name' ではなく 'username' の方が一般的です
+    private String username; // 'name' ではなく 'username' に変更
 
     @Column(nullable = false, unique = true) // メールアドレスも必須、かつユニーク
     private String email;
 
-    // TODO: 後でパスワードなどを追加
+    @Column(nullable = false)
+    private String password; // ★ハッシュ化されたパスワードを格納
 
-    // ユーザーとカートは1対1の関係
-    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Cart cart;
+    @Column(nullable = false)
+    private String role; // 例: "USER", "ADMIN" など。★ユーザーの役割
 
-    // 便利メソッド：ユーザーが作成されたときにカートも自動的に作成されるように
-    public void createCartForUser() {
-        if (this.cart == null) {
-            this.cart = new Cart();
-            this.cart.setUser(this); // 双方向参照の設定
-        }
-    }
+    // ユーザーとカートは1対1の関係（このマッピングは、UserエンティティではUser認証に直接は必要ないが、
+    // 将来的にユーザー情報取得時に紐づくカート情報を参照したい場合に必要となる。
+    // 今回の認証フローには含めず、コメントアウトか、後で追加することも可能だが、
+    // ここでUserがCartを持つのではなく、CartがUserを持つ方が一般的な設計。
+    // まずは認証機能に集中し、このOneToOneマッピングは後ほど再検討しましょう。）
+
+    // ★以前のCartとのOneToOneマッピングと createCartForUser() メソッドは、
+    // ★ユーザー認証には直接不要なので、今回の更新では削除します。
+    // ★認証機能が完成した後、必要に応じてCartエンティティ側からUserへの参照を張る形などで再構築します。
 }

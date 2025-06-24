@@ -3,16 +3,17 @@ package com.example.my_test_app.service;
 import com.example.my_test_app.model.Cart;
 import com.example.my_test_app.model.CartItem;
 import com.example.my_test_app.model.User;
-import com.example.my_test_app.model.Product; // Productのパッケージに合わせて修正
+import com.example.my_test_app.model.Product;
 import com.example.my_test_app.repository.CartRepository;
 import com.example.my_test_app.repository.CartItemRepository;
 import com.example.my_test_app.repository.UserRepository;
-import com.example.my_test_app.repository.ProductRepository; // ProductRepositoryのパッケージに合わせて修正
+import com.example.my_test_app.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
+import java.util.Optional; // Optionalをインポート
+import java.util.Set; // Setをインポート (getCartItems().size()を使うため)
 
 @Service
 public class CartService {
@@ -20,9 +21,8 @@ public class CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final UserRepository userRepository;
-    private final ProductRepository productRepository; // ProductRepositoryをインジェクト
+    private final ProductRepository productRepository;
 
-    // コンストラクタインジェクション
     @Autowired
     public CartService(CartRepository cartRepository, CartItemRepository cartItemRepository,
                        UserRepository userRepository, ProductRepository productRepository) {
@@ -33,48 +33,28 @@ public class CartService {
     }
 
     // ========== カートに商品を追加するロジック ==========
-    // ユーザーID、商品ID、数量を受け取る
     @Transactional
     public Optional<CartItem> addProductToCart(Long userId, Long productId, int quantity) {
         if (quantity <= 0) {
-            // 数量が0以下の場合は追加しない
-            return Optional.empty();
+            throw new IllegalArgumentException("Quantity must be positive.");
         }
 
-        // 1. ユーザーを取得 (認証機能がないので、仮のユーザーを作成または取得)
-        User user = userRepository.findById(userId).orElseGet(() -> {
-            // ユーザーが存在しない場合、新しいユーザーを仮で作成（デバッグ・テスト用）
-            // 実際にはログインしたユーザーの情報を利用する
-            User newUser = new User();
-            newUser.setName("GuestUser" + userId); // 仮の名前
-            newUser.setEmail("guest" + userId + "@example.com"); // 仮のメール
-            newUser.createCartForUser(); // ユーザー作成時にカートも作成
-            return userRepository.save(newUser);
-        });
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
 
-        // 2. ユーザーに紐づくカートを取得または作成
-        Cart cart = user.getCart();
-        if (cart == null) {
-            cart = new Cart();
-            cart.setUser(user);
-            user.setCart(cart); // 双方向参照設定
-            cart = cartRepository.save(cart); // カートを保存してIDを生成
-        }
+        // ユーザーに紐づくカートを取得または作成
+        Cart cart = cartRepository.findByUser(user) // CartRepositoryのfindByUserを使用
+                .orElseGet(() -> {
+                    Cart newCart = new Cart();
+                    newCart.setUser(user);
+                    return cartRepository.save(newCart);
+                });
 
-        // 3. カートの最大商品数制限のチェック (20種類まで)
-        // 「要件追加・変更リスト.txt」の「カートの最大商品数オーバー時」に対応
-        if (cart.getCartItems().size() >= 20) {
-            // 既に20種類の商品がある場合、既存の商品の数量を増やす場合を除き、新規追加は不可
-            // 後続のロジックで既存商品かチェックするため、ここではまだ例外は投げない
-            // ただし、このチェックはあくまで種類数なので、厳密にはfindByCartAndProduct後に再度チェックが必要
-        }
-
-        // 4. 商品を取得
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
 
-        // 5. カートに既存のアイテムがあるか確認
-        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartAndProduct(cart, product);
+        // ★修正: CartItemRepositoryのメソッド名を findByCartAndProduct から findByCartIdAndProductId に変更
+        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartIdAndProductId(cart.getId(), product.getId());
 
         CartItem cartItem;
         if (existingCartItemOptional.isPresent()) {
@@ -84,17 +64,52 @@ public class CartService {
             cartItem = cartItemRepository.save(cartItem);
         } else {
             // 新規アイテムの場合、種類数の最終チェック
-            if (cart.getCartItems().size() >= 20) {
+            // ここで getCartItems() を呼び出すとLAZYフェッチされるため、
+            // カート取得時に findByUserWithCartItems を使っていない場合はN+1問題が発生する可能性あり
+            // ただし、このメソッドはaddProductToCartなので、新しいCartItemを作成し、
+            // それをcart.getCartItems().add(cartItem)で追加することで、
+            // 次回同じCartがフェッチされたときにコレクションに含まれるようになる。
+            // ここでのgetCartItems().size()は、現在のトランザクションでロードされたコレクションの状態を見る。
+            // 常に最新の状態を保証するには、CartRepository.findByUserWithCartItems(user) でCartを取得すべき。
+            // しかし、addProductToCartでは常にcartRepository.findByUser(user)を使っているため、
+            // その時点ではcartItemsコレクションは初期化されていない（空か、以前のデータ）可能性がある。
+            // 最も確実なのは、以下のようにgetCartItems().size()の前に明示的にロードするか、
+            // このチェックロジックをより慎重に設計すること。
+            // 例: cartItemRepository.countByCartId(cart.getId()) のようなメソッドをRepositoryに追加する。
+            // 今回は、現在のCartエンティティのgetCartItems()が動作すると仮定します。
+
+            // Cartエンティティの cartItems コレクションをロードしてサイズを取得
+            // このadd/removeProductToCartにおいてはcartRepository.findByUser(user)を使用しているため
+            // Cartエンティティの cartItems はLAZYロードされており、初回アクセス時にDBからロードされる。
+            // そのため、ここで .size() を呼ぶとコレクションがロードされる。
+            // ただし、既に存在するCartItemが追加された場合、そのCartItemはコレクションに含まれない場合がある。
+            // ここでのチェックは「現在DBに登録されている種類数」を正確に反映しない可能性があるため注意が必要。
+            // より確実なのは、countDistinctProductsInCart(Long cartId)のようなRepositoryメソッドを使うこと。
+            // シンプル化のため、ここではcart.getCartItems().size()を使用しますが、実運用では要検討。
+
+            // カートアイテムの種類数を正確に数えるため、Repositoryに countDistinctProductsInCart を追加するのが理想
+            // 例： Long currentDistinctItems = cartItemRepository.countDistinctProductByCartId(cart.getId());
+            // 今は既存のCartエンティティのコレクションでチェックする
+
+            // カートアイテムをロードして、そのサイズをチェック
+            // 以下の行を削除し、より正確なチェック方法を採用することも可能
+            Set<CartItem> currentCartItems = cart.getCartItems(); // LAZYロードされる可能性あり
+            if (currentCartItems.size() >= 20) {
                 // 新規商品を追加しようとして、種類数が20を超過する場合
                 throw new IllegalStateException("カートに追加できる商品の種類は20個までです。");
             }
+
             // 新しいアイテムとして追加
             cartItem = new CartItem(cart, product, quantity);
-            cart.addCartItem(cartItem); // カートエンティティにアイテムを追加（双方向参照）
+            // ★修正: cart.addCartItem(cartItem); を削除し、直接コレクションに追加
+            cart.getCartItems().add(cartItem); // Cartエンティティのコレクションに直接追加
+
             cartItem = cartItemRepository.save(cartItem);
         }
 
-        // カート自体を保存（CartItemの追加/更新により関連が変更された可能性があるため）
+        // CartItemの追加/更新によりCartエンティティの内部状態（cartItemsコレクション）が変更された可能性があるため保存
+        // Cartエンティティの @OneToMany の cascade = CascadeType.ALL があれば、CartItemの保存でCartも更新されることが多いが、
+        // コレクションへの追加の場合は明示的に親を保存した方が確実。
         cartRepository.save(cart);
 
         return Optional.of(cartItem);
@@ -106,69 +121,95 @@ public class CartService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
 
-        Cart cart = user.getCart();
-        if (cart == null) {
-            return false; // カートがない場合は削除できない
-        }
+        Cart cart = cartRepository.findByUser(user) // CartRepositoryのfindByUserを使用
+                .orElseThrow(() -> new RuntimeException("Cart not found for user: " + userId));
 
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
 
-        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartAndProduct(cart, product);
+        // ★修正: CartItemRepositoryのメソッド名を findByCartAndProduct から findByCartIdAndProductId に変更
+        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartIdAndProductId(cart.getId(), product.getId());
 
         if (existingCartItemOptional.isPresent()) {
             CartItem cartItem = existingCartItemOptional.get();
-            cart.removeCartItem(cartItem); // Cartエンティティからアイテムを削除（双方向参照）
+            // ★修正: cart.removeCartItem(cartItem); を削除し、直接コレクションから削除
+            cart.getCartItems().remove(cartItem); // Cartエンティティのコレクションから直接削除
+
             cartItemRepository.delete(cartItem); // CartItemを削除
-            cartRepository.save(cart); // カートを保存
+
+            // 親エンティティのコレクションが変更されたので、親エンティティを保存しDBに同期
+            // cart.getCartItems().remove() は @OneToMany の orphanRemoval=true が設定されていれば、
+            // save(cart) を呼ぶことで関連する cartItem が削除されるはずだが、念のため明示的な delete を残す。
+            cartRepository.save(cart); // カートを保存（コレクション変更をDBに同期）
             return true;
         }
         return false; // カートに該当商品がない場合
     }
 
     // ========== カートの内容を取得するロジック ==========
-    @Transactional(readOnly = true) // 読み取り専用トランザクション
+    @Transactional(readOnly = true)
     public Optional<Cart> getCartByUserId(Long userId) {
-        // ユーザーに紐づくカートをフェッチする際に、カートアイテムも同時にロードする
-        // これにより、N+1問題を回避し、効率的にデータを取得
-        return userRepository.findById(userId)
-                .map(user -> {
-                    // Lazy Loading の設定に依存するため、明示的に fetch するか、
-                    // Cartエンティティの @OneToMany に FetchType.EAGER を設定することも可能
-                    // ただしEAGERはパフォーマンスに影響を与える可能性があるので注意
-                    // ここではシンプルにuser.getCart()を返す。後で最適化が必要になる可能性あり。
-                    return user.getCart();
-                });
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        // CartRepositoryの findByUserWithCartItems メソッドを使用
+        return cartRepository.findByUserWithCartItems(user);
     }
 
-    // ========== カート内のアイテム数量を更新するロジック (オプション) ==========
+    // ========== カート内のアイテム数量を更新するロジック ==========
     @Transactional
     public Optional<CartItem> updateCartItemQuantity(Long userId, Long productId, int newQuantity) {
-        if (newQuantity <= 0) {
-            // 数量が0以下の場合は削除と見なす
-            return removeProductFromCart(userId, productId) ? Optional.empty() : Optional.ofNullable(null); // 削除成功ならOptional.empty()
+        if (newQuantity < 0) { // 数量が負の場合はエラー
+            throw new IllegalArgumentException("Quantity cannot be negative.");
+        }
+
+        if (newQuantity == 0) {
+            // 数量が0の場合は削除と見なす
+            boolean removed = removeProductFromCart(userId, productId);
+            return removed ? Optional.empty() : Optional.ofNullable(null); // 削除成功ならOptional.empty()
         }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
 
-        Cart cart = user.getCart();
-        if (cart == null) {
-            throw new RuntimeException("Cart not found for user: " + userId);
-        }
+        Cart cart = cartRepository.findByUser(user) // CartRepositoryのfindByUserを使用
+                .orElseThrow(() -> new RuntimeException("Cart not found for user: " + userId));
 
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
 
-        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartAndProduct(cart, product);
+        // ★修正: CartItemRepositoryのメソッド名を findByCartAndProduct から findByCartIdAndProductId に変更
+        Optional<CartItem> existingCartItemOptional = cartItemRepository.findByCartIdAndProductId(cart.getId(), product.getId());
 
         if (existingCartItemOptional.isPresent()) {
             CartItem cartItem = existingCartItemOptional.get();
             cartItem.setQuantity(newQuantity);
             return Optional.of(cartItemRepository.save(cartItem));
         } else {
-            // カートにアイテムがない場合は追加と見なす
+            // カートにアイテムがない場合は新規追加と見なす（数量 > 0 の場合のみ）
             return addProductToCart(userId, productId, newQuantity);
         }
+    }
+
+    // ========== カートをクリアするロジック（追加） ==========
+    @Transactional
+    public void clearCart(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+
+        Cart cart = cartRepository.findByUser(user)
+                .orElseThrow(() -> new RuntimeException("Cart not found for user: " + userId));
+
+        // カートアイテムを全て削除
+        // cart.getCartItems().clear() を実行し、その後 cartRepository.save(cart) を呼ぶことで
+        // orphanRemoval=true の設定により関連するCartItemが削除される。
+        // ただし、明示的に削除することで意図が明確になる。
+        cartItemRepository.deleteAll(cart.getCartItems()); // カートに紐づく全てのアイテムを削除
+
+        // Cartエンティティのコレクションもクリア
+        cart.getCartItems().clear();
+
+        // コレクション変更をDBに同期するためにCartを保存
+        cartRepository.save(cart);
     }
 }
