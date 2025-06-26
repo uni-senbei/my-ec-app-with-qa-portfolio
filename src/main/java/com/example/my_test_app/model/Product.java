@@ -47,4 +47,10 @@ public class Product {
     private ProductType type;
 
     // ProductType enum は別の ProductType.java ファイルに分離済み
+
+    // Product.java の既存のフィールドの下に追加
+// ...
+
+    @Column(length = 500) // URLの長さに合わせて調整
+    private String imageUrl; // ★追加：商品画像のURL
 }

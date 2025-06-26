@@ -12,4 +12,10 @@ import java.util.Optional; // Optionalをインポート
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     // 特定のカートと商品IDに紐づくカートアイテムを見つけるカスタムクエリ
     Optional<CartItem> findByCartIdAndProductId(Long cartId, Long productId);
+
+    // カート内の商品の種類数を数えるためのカスタムメソッド (オプション)
+    // Long countDistinctProductByCartId(Long cartId); // 後で必要に応じて追加
+
+    // カートIDに基づいて全てのカートアイテムを削除するメソッド (clearCartで利用)
+    void deleteByCartId(Long cartId);
 }

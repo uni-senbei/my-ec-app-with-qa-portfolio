@@ -10,13 +10,11 @@ import java.util.Optional;
 
 @Repository
 public interface CartRepository extends JpaRepository<Cart, Long> {
+    Optional<Cart> findByUser(User user);
 
-    // 特定のユーザーに紐づくカートを取得するメソッド
-    // Userエンティティを引数として受け取る
-    Optional<Cart> findByUser(User user); // ★追加
-
-    // 特定のユーザーに紐づくカートとそのカートアイテムを同時に取得するメソッド
-    // N+1問題を避けるためにJOIN FETCHを使用
-    @Query("SELECT c FROM Cart c LEFT JOIN FETCH c.cartItems WHERE c.user = :user") // ★追加
+    @Query("SELECT c FROM Cart c " +
+            "LEFT JOIN FETCH c.cartItems ci " +
+            "LEFT JOIN FETCH ci.product p " +
+            "WHERE c.user = :user")
     Optional<Cart> findByUserWithCartItems(User user);
 }

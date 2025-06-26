@@ -1,32 +1,53 @@
-// src/main/java/com/example/my_test_app/model/Cart.java
 package com.example.my_test_app.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import lombok.Setter;
 
 import java.util.HashSet;
-import java.util.Set; // Setをインポート
+import java.util.Set;
+import java.time.LocalDateTime; // ★追加
+import org.hibernate.annotations.UpdateTimestamp; // ★追加
 
 @Entity
-@Table(name = "cart")
-@Data
+@Table(name = "carts")
+@Getter
+@Setter
 @NoArgsConstructor
-@AllArgsConstructor
+@EqualsAndHashCode(of = "id")
 public class Cart {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", unique = true, nullable = false)
+    @JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)
+    @ToString.Exclude
     private User user;
 
-    // ★追加または修正: CartItemとのOneToManyリレーションシップ
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private Set<CartItem> cartItems = new HashSet<>();
-    // Getter, SetterはLombokが生成しますが、初期化のために new HashSet<>() を明示的に追加することが推奨されます。
-    // また、このフィールドに対するGetter/SetterはLombokが@Dataで自動生成してくれます。
+
+    // ★以下3行を追加
+    @Column(name = "last_modified_date", columnDefinition = "TIMESTAMP")
+    @UpdateTimestamp
+    private LocalDateTime lastModifiedDate = LocalDateTime.now(); // デフォルト値を設定
+
+
+    // ユーティリティメソッド
+    public void addCartItem(CartItem item) {
+        cartItems.add(item);
+        item.setCart(this);
+    }
+
+    public void removeCartItem(CartItem item) {
+        cartItems.remove(item);
+        item.setCart(null);
+    }
+
 }
