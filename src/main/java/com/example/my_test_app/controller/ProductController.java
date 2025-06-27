@@ -3,18 +3,20 @@ package com.example.my_test_app.controller;
 import com.example.my_test_app.dto.ProductDto;
 import com.example.my_test_app.model.ProductType;
 import com.example.my_test_app.service.ProductService;
+import com.example.my_test_app.exceptions.ResourceNotFoundException; // ★ 追加
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
+import jakarta.validation.Valid;
+import java.math.BigDecimal; // BigDecimalのインポートが必要な場合
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
-
-// @Valid は ProductDto にバリデーションアノテーションが付いたときにインポートします
-// import jakarta.validation.Valid;
+import java.util.Map;
+import java.util.Optional; // Optionalのインポートが必要な場合
 
 @RestController
 @RequestMapping("/api/products")
@@ -46,8 +48,15 @@ public class ProductController {
     @GetMapping("/{id}")
     public ResponseEntity<ProductDto> getProductById(@PathVariable Long id) {
         Optional<ProductDto> productDto = productService.getProductById(id);
+        // ProductServiceはOptionalを返すため、ここでは引き続きOptionalで処理
         return productDto.map(value -> new ResponseEntity<>(value, HttpStatus.OK))
                 .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
+        // ★ 注意: 今回の404標準化では、このGETメソッドは変更しないことにします。
+        // なぜなら、Optionalを返すことで、見つからない場合は空のボディで404を返すという明確な意図があるためです。
+        // もし、GETでも{ "message": "..." } のような404ボディを返したい場合は、
+        // productDto.orElseThrow(() -> new ResourceNotFoundException("商品が見つかりません: " + id));
+        // とし、このコントローラーの@ExceptionHandlerで捕捉するように変更できます。
+        // しかし、GETでは通常、存在しないリソースへのリクエストは空のボディで404が一般的です。
     }
 
     /**
@@ -57,7 +66,7 @@ public class ProductController {
      * @return 登録された商品情報 (IDが付与されたもの)
      */
     @PostMapping
-    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto){
+    public ResponseEntity<ProductDto> createProduct(@Valid @RequestBody ProductDto productDto){
         ProductDto createdProduct = productService.createProduct(productDto);
         return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
     }
@@ -67,39 +76,56 @@ public class ProductController {
      * PUT /api/products/{id}
      * @param id 更新対象の商品ID
      * @param productDto 新しい商品情報 (name, description, price, type, imageUrl)
-     * @return 更新された商品情報、または404 Not Found
+     * @return 更新された商品情報
+     * @throws ResourceNotFoundException 指定されたIDの商品が見つからない場合
      */
     @PutMapping("/{id}")
-    public ResponseEntity<Object> updateProduct(@PathVariable Long id, @RequestBody ProductDto productDto) {
-        // 簡易的なバリデーション（@Valid を使う場合はProductDtoにアノテーションを付与し、ここを削除）
-        if (productDto.getName() == null || productDto.getName().trim().isEmpty() ||
-                productDto.getPrice() == null || productDto.getPrice().compareTo(BigDecimal.ZERO) <= 0 ||
-                productDto.getType() == null) {
-            return new ResponseEntity<>(Collections.singletonMap("message", "商品名、価格、商品種別は必須です。価格は0より大きい値にしてください。"), HttpStatus.BAD_REQUEST);
-        }
-
-        Optional<ProductDto> updatedProductDto = productService.updateProduct(id, productDto);
-
-        if (updatedProductDto.isPresent()) {
-            return new ResponseEntity<>(updatedProductDto.get(), HttpStatus.OK);
-        } else {
-            return new ResponseEntity<>(Collections.singletonMap("message", "指定されたIDの商品が見つかりません: " + id), HttpStatus.NOT_FOUND);
-        }
+    public ResponseEntity<ProductDto> updateProduct(@PathVariable Long id, @Valid @RequestBody ProductDto productDto) { // ★ 戻り値をResponseEntity<ProductDto> に変更
+        // ProductServiceがResourceNotFoundExceptionをスローするようになったため、Optionalのチェックは不要
+        ProductDto updatedProduct = productService.updateProduct(id, productDto);
+        return new ResponseEntity<>(updatedProduct, HttpStatus.OK);
     }
 
     /**
      * 指定されたIDの商品を削除するAPI
      * DELETE /api/products/{id}
      * @param id 削除対象の商品ID
-     * @return 削除成功時は204 No Content、存在しない場合は404 Not Found
+     * @return 削除成功時は204 No Content
+     * @throws ResourceNotFoundException 指定されたIDの商品が見つからない場合
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        boolean deleted = productService.deleteProduct(id);
-        if (deleted) {
-            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-        } else {
-            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-        }
+        // ProductServiceがResourceNotFoundExceptionをスローするようになったため、booleanのチェックは不要
+        productService.deleteProduct(id);
+        return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+    }
+
+    // ========== 例外ハンドラ ==========
+
+    /**
+     * バリデーションエラー（@Validアノテーションによる検証失敗）を処理するハンドラ
+     * @param ex MethodArgumentNotValidException
+     * @return フィールドごとのエラーメッセージを含むMap
+     */
+    @ResponseStatus(HttpStatus.BAD_REQUEST) // HTTPステータスコードを400 Bad Requestに設定
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public Map<String, String> handleValidationExceptions(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                errors.put(error.getField(), error.getDefaultMessage()));
+        return errors;
+    }
+
+    /**
+     * リソースが見つからない場合の例外（ResourceNotFoundException）を処理するハンドラ
+     * @param ex ResourceNotFoundException
+     * @return エラーメッセージを含むMap
+     */
+    @ResponseStatus(HttpStatus.NOT_FOUND) // HTTPステータスコードを404 Not Foundに設定
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public Map<String, String> handleResourceNotFoundException(ResourceNotFoundException ex) {
+        Map<String, String> errors = new HashMap<>();
+        errors.put("message", ex.getMessage()); // 例外メッセージを"message"キーで返す
+        return errors;
     }
 }

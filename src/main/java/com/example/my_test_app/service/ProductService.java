@@ -1,8 +1,8 @@
 package com.example.my_test_app.service;
 
-import com.example.my_test_app.model.Product;
 import com.example.my_test_app.dto.ProductDto;
-import com.example.my_test_app.model.ProductType; // ProductTypeのインポートが必要
+import com.example.my_test_app.exceptions.ResourceNotFoundException; // ★ 追加
+import com.example.my_test_app.model.Product;
 import com.example.my_test_app.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import java.math.BigDecimal; // BigDecimalのインポートが必要
 
 @Service
 public class ProductService {
@@ -23,47 +22,56 @@ public class ProductService {
         this.productRepository = productRepository;
     }
 
-    // ========== 商品をDTOに変換するヘルパーメソッド ==========
-    public ProductDto convertToDto(Product product) {
+    // ========== DTO変換ヘルパーメソッド ==========
+    private ProductDto convertToDto(Product product) {
         return new ProductDto(
                 product.getId(),
                 product.getName(),
                 product.getDescription(),
                 product.getPrice(),
-                product.getImageUrl(), // ★ imageUrl を含める
-                product.getType()
+                product.getType(),
+                product.getImageUrl()
         );
     }
 
-    // ========== DTOからエンティティに変換するヘルパーメソッド (新規作成・更新用) ==========
-    public Product convertToEntity(ProductDto productDto) {
+    private Product convertToEntity(ProductDto productDto) {
         Product product = new Product();
-        // IDは新規作成時は不要、更新時のみ設定
-        if (productDto.getId() != null) {
-            product.setId(productDto.getId());
-        }
+        product.setId(productDto.getId()); // IDは更新時に使用
         product.setName(productDto.getName());
         product.setDescription(productDto.getDescription());
         product.setPrice(productDto.getPrice());
-        product.setImageUrl(productDto.getImageUrl()); // ★ imageUrl を含める
         product.setType(productDto.getType());
+        product.setImageUrl(productDto.getImageUrl());
         return product;
     }
 
-    // ========== 全ての商品を取得する ==========
+    // ========== CRUD 操作 ==========
+
+    /**
+     * 全ての商品を取得する
+     * @return 全ての商品DTOのリスト
+     */
     public List<ProductDto> getAllProducts() {
         return productRepository.findAll().stream()
                 .map(this::convertToDto)
                 .collect(Collectors.toList());
     }
 
-    // ========== IDで商品を取得する ==========
+    /**
+     * IDで商品を検索する
+     * @param id 商品ID
+     * @return 該当する商品DTO (Optional)
+     */
     public Optional<ProductDto> getProductById(Long id) {
         return productRepository.findById(id)
                 .map(this::convertToDto);
     }
 
-    // ========== 新しい商品を作成する ==========
+    /**
+     * 新しい商品を作成する
+     * @param productDto 作成する商品のDTO
+     * @return 作成された商品DTO
+     */
     @Transactional
     public ProductDto createProduct(ProductDto productDto) {
         Product product = convertToEntity(productDto);
@@ -71,43 +79,41 @@ public class ProductService {
         return convertToDto(savedProduct);
     }
 
-    // ========== 商品を更新する ==========
+    /**
+     * 商品を更新する
+     * @param id 更新する商品のID
+     * @param productDto 更新内容を含むDTO
+     * @return 更新された商品DTO
+     * @throws ResourceNotFoundException 指定されたIDの商品が見つからない場合
+     */
     @Transactional
-    public Optional<ProductDto> updateProduct(Long id, ProductDto productDto) {
-        // 1. 指定されたIDの商品をデータベースから検索
-        Optional<Product> existingProductOptional = productRepository.findById(id);
-
-        if (existingProductOptional.isPresent()) {
-            // 2. 商品が見つかった場合、既存のエンティティを取得
-            Product existingProduct = existingProductOptional.get();
-
-            // 3. DTOのデータで既存のエンティティのフィールドを更新
-            //    IDはURLパスから受け取ったものを使用し、DTOのIDは無視します。
-            existingProduct.setName(productDto.getName());
-            existingProduct.setDescription(productDto.getDescription());
-            existingProduct.setPrice(productDto.getPrice());
-            existingProduct.setImageUrl(productDto.getImageUrl()); // ★ imageUrl を含める
-            existingProduct.setType(productDto.getType());
-
-            // 4. 更新したエンティティをデータベースに保存
-            Product updatedProduct = productRepository.save(existingProduct);
-
-            // 5. 更新後のエンティティをDTOに変換して返す
-            return Optional.of(convertToDto(updatedProduct));
-        } else {
-            // 6. 商品が見つからない場合は空のOptionalを返す
-            return Optional.empty();
-        }
+    public ProductDto updateProduct(Long id, ProductDto productDto) { // ★ 戻り値を Optional<ProductDto> から ProductDto に変更
+        return productRepository.findById(id)
+                .map(existingProduct -> {
+                    existingProduct.setName(productDto.getName());
+                    existingProduct.setDescription(productDto.getDescription());
+                    existingProduct.setPrice(productDto.getPrice());
+                    existingProduct.setType(productDto.getType());
+                    existingProduct.setImageUrl(productDto.getImageUrl());
+                    Product updatedProduct = productRepository.save(existingProduct);
+                    return convertToDto(updatedProduct);
+                })
+                .orElseThrow(() -> new ResourceNotFoundException("指定されたIDの商品が見つかりません: " + id)); // ★ 例外をスロー
     }
 
-    // ========== 商品を削除する ==========
+    /**
+     * 商品を削除する
+     * @param id 削除する商品のID
+     * @return 削除が成功した場合は true、見つからない場合は ResourceNotFoundException をスロー
+     * @throws ResourceNotFoundException 指定されたIDの商品が見つからない場合
+     */
     @Transactional
-    public boolean deleteProduct(Long id) {
+    public boolean deleteProduct(Long id) { // ★ 戻り値を boolean から boolean に変更なしだが、例外スローを追加
         if (productRepository.existsById(id)) {
             productRepository.deleteById(id);
             return true;
         } else {
-            return false;
+            throw new ResourceNotFoundException("指定されたIDの商品が見つかりません: " + id); // ★ 例外をスロー
         }
     }
 }

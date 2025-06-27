@@ -168,8 +168,6 @@ public class CartService {
 
     // ========== エンティティからDTOへの変換ヘルパーメソッド ==========
 
-// ========== エンティティからDTOへの変換ヘルパーメソッド ==========
-
     // CartItemエンティティをCartItemDtoに変換
     private CartItemDto convertToCartItemDto(CartItem cartItem) {
         ProductDto productDto = new ProductDto(
@@ -177,8 +175,8 @@ public class CartService {
                 cartItem.getProduct().getName(),
                 cartItem.getProduct().getDescription(),
                 cartItem.getProduct().getPrice(),
-                cartItem.getProduct().getImageUrl(),
-                cartItem.getProduct().getType() // ★ この行を追加してください
+                cartItem.getProduct().getType(),    // ★ type を先に変更
+                cartItem.getProduct().getImageUrl() // ★ imageUrl を後に変更
         );
         return new CartItemDto(cartItem.getId(), cartItem.getQuantity(), productDto);
     }
