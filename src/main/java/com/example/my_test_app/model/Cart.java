@@ -10,8 +10,11 @@ import lombok.Setter;
 
 import java.util.HashSet;
 import java.util.Set;
+/*
 import java.time.LocalDateTime; // ★追加
 import org.hibernate.annotations.UpdateTimestamp; // ★追加
+
+ */
 
 @Entity
 @Table(name = "carts")
@@ -33,11 +36,12 @@ public class Cart {
     @JsonManagedReference
     private Set<CartItem> cartItems = new HashSet<>();
 
-    // ★以下3行を追加
-    @Column(name = "last_modified_date", columnDefinition = "TIMESTAMP")
+/*
+    // ★以下3行を再度追加 (または、存在することを確認)
+    @Column(name = "last_modified_date")
     @UpdateTimestamp
-    private LocalDateTime lastModifiedDate = LocalDateTime.now(); // デフォルト値を設定
-
+    private LocalDateTime lastModifiedDate;
+*/
 
     // ユーティリティメソッド
     public void addCartItem(CartItem item) {
@@ -45,9 +49,9 @@ public class Cart {
         item.setCart(this);
     }
 
+
     public void removeCartItem(CartItem item) {
         cartItems.remove(item);
         item.setCart(null);
     }
-
 }

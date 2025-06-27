@@ -144,7 +144,9 @@ public class CartService {
         if (existingCartItemOptional.isPresent()) {
             CartItem cartItem = existingCartItemOptional.get();
             cartItem.setQuantity(newQuantity);
-            cartItem = cartItemRepository.save(cartItem);
+            cartItem = cartItemRepository.save(cartItem); // ★ここでCartItemは保存
+            cartRepository.save(cart); // ★この行を追加！Cartの最終更新日時を更新するため
+
             return Optional.of(convertToCartItemDto(cartItem)); // ★保存されたCartItemエンティティをDTOに変換して返す
         } else {
             // カートにアイテムがない場合は新規追加と見なす
@@ -152,7 +154,6 @@ public class CartService {
             return addProductToCart(userId, productId, newQuantity);
         }
     }
-
     // ========== カートをクリアするロジック（変更なし） ==========
     @Transactional
     public void clearCart(Long userId) {
