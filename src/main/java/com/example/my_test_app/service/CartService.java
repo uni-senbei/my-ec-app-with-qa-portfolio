@@ -4,9 +4,9 @@ import com.example.my_test_app.model.Cart;
 import com.example.my_test_app.model.CartItem;
 import com.example.my_test_app.model.User;
 import com.example.my_test_app.model.Product;
-import com.example.my_test_app.dto.CartDto;      // ★追加: CartDtoをインポート
-import com.example.my_test_app.dto.CartItemDto; // DTOをインポート
-import com.example.my_test_app.dto.ProductDto;   // DTOをインポート
+import com.example.my_test_app.dto.CartDto;
+import com.example.my_test_app.dto.CartItemDto;
+import com.example.my_test_app.dto.ProductDto;
 import com.example.my_test_app.repository.CartRepository;
 import com.example.my_test_app.repository.CartItemRepository;
 import com.example.my_test_app.repository.UserRepository;
@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors; // ★追加: Stream APIを使用するため
+import java.util.stream.Collectors;
 
 @Service
 public class CartService {
@@ -120,14 +120,14 @@ public class CartService {
 
     // ========== カート内のアイテム数量を更新するロジック (DTOを返すように変更) ==========
     @Transactional
-    public Optional<CartItemDto> updateCartItemQuantity(Long userId, Long productId, int newQuantity) { // ★返り値の型をOptional<CartItemDto>に変更
+    public Optional<CartItemDto> updateCartItemQuantity(Long userId, Long productId, int newQuantity) {
         if (newQuantity < 0) {
             throw new IllegalArgumentException("Quantity cannot be negative.");
         }
 
         if (newQuantity == 0) {
             boolean removed = removeProductFromCart(userId, productId);
-            return removed ? Optional.empty() : Optional.empty(); // 削除成功ならOptional.empty(), 失敗ならnullではなくOptional.empty()
+            return removed ? Optional.empty() : Optional.empty();
         }
 
         User user = userRepository.findById(userId)
@@ -144,13 +144,11 @@ public class CartService {
         if (existingCartItemOptional.isPresent()) {
             CartItem cartItem = existingCartItemOptional.get();
             cartItem.setQuantity(newQuantity);
-            cartItem = cartItemRepository.save(cartItem); // ★ここでCartItemは保存
-            cartRepository.save(cart); // ★この行を追加！Cartの最終更新日時を更新するため
+            cartItem = cartItemRepository.save(cartItem);
+            cartRepository.save(cart);
 
-            return Optional.of(convertToCartItemDto(cartItem)); // ★保存されたCartItemエンティティをDTOに変換して返す
+            return Optional.of(convertToCartItemDto(cartItem));
         } else {
-            // カートにアイテムがない場合は新規追加と見なす
-            // ここでaddProductToCartを呼び出すと、新しいCartItemが追加され、そのCartItemDtoが返される
             return addProductToCart(userId, productId, newQuantity);
         }
     }
@@ -170,6 +168,8 @@ public class CartService {
 
     // ========== エンティティからDTOへの変換ヘルパーメソッド ==========
 
+// ========== エンティティからDTOへの変換ヘルパーメソッド ==========
+
     // CartItemエンティティをCartItemDtoに変換
     private CartItemDto convertToCartItemDto(CartItem cartItem) {
         ProductDto productDto = new ProductDto(
@@ -177,7 +177,8 @@ public class CartService {
                 cartItem.getProduct().getName(),
                 cartItem.getProduct().getDescription(),
                 cartItem.getProduct().getPrice(),
-                cartItem.getProduct().getImageUrl()
+                cartItem.getProduct().getImageUrl(),
+                cartItem.getProduct().getType() // ★ この行を追加してください
         );
         return new CartItemDto(cartItem.getId(), cartItem.getQuantity(), productDto);
     }

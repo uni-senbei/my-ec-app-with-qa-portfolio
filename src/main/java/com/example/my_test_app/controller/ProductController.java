@@ -1,32 +1,31 @@
-// src/main/java/com/example/my_test_app/controller/ProductController.java
-
 package com.example.my_test_app.controller;
 
-import com.example.my_test_app.model.Product;
-import com.example.my_test_app.repository.ProductRepository;
+import com.example.my_test_app.dto.ProductDto;
+import com.example.my_test_app.model.ProductType;
+import com.example.my_test_app.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.http.HttpStatus; // DELETEやPOSTのResponseStatusで使う
-import jakarta.validation.Valid; // ★これがあることを確認
+import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
-import java.util.Optional; // ★この重複しているOptionalを削除してください
+import java.util.Optional;
+
+// @Valid は ProductDto にバリデーションアノテーションが付いたときにインポートします
+// import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
 
+    private final ProductService productService;
+
     @Autowired
-    private ProductRepository productRepository;
+    public ProductController(ProductService productService) {
+        this.productService = productService;
+    }
 
     /**
      * 全ての商品一覧を取得するAPI
@@ -34,8 +33,8 @@ public class ProductController {
      * @return 全ての商品リスト
      */
     @GetMapping
-    public List<Product> getAllProducts() {
-        return productRepository.findAll();
+    public List<ProductDto> getAllProducts() {
+        return productService.getAllProducts();
     }
 
     /**
@@ -45,47 +44,46 @@ public class ProductController {
      * @return 商品詳細、または404 Not Found
      */
     @GetMapping("/{id}")
-    public ResponseEntity<Product> getProductById(@PathVariable Long id) {
-        Optional<Product> product = productRepository.findById(id);
-        return product.map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ProductDto> getProductById(@PathVariable Long id) {
+        Optional<ProductDto> productDto = productService.getProductById(id);
+        return productDto.map(value -> new ResponseEntity<>(value, HttpStatus.OK))
+                .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 
     /**
      * 新しい商品を追加するAPI
      * POST /api/products
-     * @param product 登録する商品情報
+     * @param productDto 登録する商品情報
      * @return 登録された商品情報 (IDが付与されたもの)
      */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Product createProduct(@Valid @RequestBody Product product){ // ★ ここに @Valid を追加
-        return productRepository.save(product);
+    public ResponseEntity<ProductDto> createProduct(@RequestBody ProductDto productDto){
+        ProductDto createdProduct = productService.createProduct(productDto);
+        return new ResponseEntity<>(createdProduct, HttpStatus.CREATED);
     }
 
     /**
      * 指定されたIDの商品情報を更新するAPI
      * PUT /api/products/{id}
      * @param id 更新対象の商品ID
-     * @param product 新しい商品情報 (name, description, price, type)
+     * @param productDto 新しい商品情報 (name, description, price, type, imageUrl)
      * @return 更新された商品情報、または404 Not Found
      */
     @PutMapping("/{id}")
-    public ResponseEntity<Product> updateProduct(@PathVariable Long id, @Valid @RequestBody Product product) { // ★ ここに @Valid を追加
-        Optional<Product> existingProductOptional = productRepository.findById(id);
+    public ResponseEntity<Object> updateProduct(@PathVariable Long id, @RequestBody ProductDto productDto) {
+        // 簡易的なバリデーション（@Valid を使う場合はProductDtoにアノテーションを付与し、ここを削除）
+        if (productDto.getName() == null || productDto.getName().trim().isEmpty() ||
+                productDto.getPrice() == null || productDto.getPrice().compareTo(BigDecimal.ZERO) <= 0 ||
+                productDto.getType() == null) {
+            return new ResponseEntity<>(Collections.singletonMap("message", "商品名、価格、商品種別は必須です。価格は0より大きい値にしてください。"), HttpStatus.BAD_REQUEST);
+        }
 
-        if (existingProductOptional.isPresent()) {
-            Product existingProduct = existingProductOptional.get();
-            // 受け取った商品情報で既存の情報を更新する
-            existingProduct.setName(product.getName());
-            existingProduct.setDescription(product.getDescription());
-            existingProduct.setPrice(product.getPrice());
-            existingProduct.setType(product.getType());
+        Optional<ProductDto> updatedProductDto = productService.updateProduct(id, productDto);
 
-            Product updatedProduct = productRepository.save(existingProduct);
-            return ResponseEntity.ok(updatedProduct);
+        if (updatedProductDto.isPresent()) {
+            return new ResponseEntity<>(updatedProductDto.get(), HttpStatus.OK);
         } else {
-            return ResponseEntity.notFound().build();
+            return new ResponseEntity<>(Collections.singletonMap("message", "指定されたIDの商品が見つかりません: " + id), HttpStatus.NOT_FOUND);
         }
     }
 
@@ -96,13 +94,12 @@ public class ProductController {
      * @return 削除成功時は204 No Content、存在しない場合は404 Not Found
      */
     @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
-        if (productRepository.existsById(id)) {
-            productRepository.deleteById(id);
-            return ResponseEntity.noContent().build();
+        boolean deleted = productService.deleteProduct(id);
+        if (deleted) {
+            return new ResponseEntity<>(HttpStatus.NO_CONTENT);
         } else {
-            return ResponseEntity.notFound().build();
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
     }
 }
