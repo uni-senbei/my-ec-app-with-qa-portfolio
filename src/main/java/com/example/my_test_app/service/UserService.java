@@ -2,6 +2,8 @@ package com.example.my_test_app.service;
 
 import com.example.my_test_app.model.User;
 import com.example.my_test_app.repository.UserRepository;
+import com.example.my_test_app.repository.PasswordResetTokenRepository;
+import com.example.my_test_app.model.PasswordResetToken;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -9,26 +11,27 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Optional;
-import java.util.Collections;
-import java.util.Date;     // ★追加済みかもしれませんが、念のため確認
-import java.util.Calendar; // ★追加
+import java.util.*;
 
 @Service
 public class UserService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
-    // ★ログイン試行回数制限の定数を定義
+    // ログイン試行回数制限の定数を定義
     private static final int MAX_FAILED_ATTEMPTS = 5; // アカウントロックされるまでの最大失敗回数
     private static final long LOCK_TIME_DURATION_MINUTES = 5; // アカウントロック期間（分）
 
     @Autowired
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            PasswordResetTokenRepository passwordResetTokenRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
     }
 
     @Transactional
@@ -51,10 +54,6 @@ public class UserService implements UserDetailsService {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(plainPassword));
         user.setRole("USER"); // デフォルトで一般ユーザーロールを設定
-        // 新規ユーザー作成時は、ログイン試行回数とロック状態を初期値に設定 (Userモデルのデフォルト値で対応)
-        // user.setFailedLoginAttempts(0);
-        // user.setAccountLocked(false);
-        // user.setLockTime(null);
 
         return userRepository.save(user);
     }
@@ -76,6 +75,46 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    public boolean resetPassword(String token, String newPassword) {
+        Optional<PasswordResetToken> resetTokenOptional = passwordResetTokenRepository.findByToken(token);
+
+        if (!resetTokenOptional.isPresent()) {
+            System.out.println("Invalid token: Token not found.");
+            return false; // トークンが見つからない
+        }
+
+        PasswordResetToken resetToken = resetTokenOptional.get();
+
+        if (resetToken.isExpired()) {
+            // 期限切れトークンを削除（クリーンアップ）
+            passwordResetTokenRepository.delete(resetToken);
+            System.out.println("Invalid token: Token expired.");
+            return false; // トークンが期限切れ
+        }
+
+        User user = resetToken.getUser();
+        if (user == null) {
+            System.out.println("Invalid token: User not found for token.");
+            return false; // トークンに関連付けられたユーザーが見つからない
+        }
+
+        // 新しいパスワードの要件チェック（簡易版）
+        if (newPassword == null || newPassword.length() < 8) {
+            System.out.println("Password reset failed: New password must be at least 8 characters long.");
+            return false;
+        }
+
+        // パスワードをハッシュ化して更新
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        // 使用済みトークンを削除（無効化）
+        passwordResetTokenRepository.delete(resetToken);
+        System.out.println("Password for user " + user.getUsername() + " has been reset successfully.");
+        return true; // パスワード更新成功
+    }
+
+    @Transactional
     public Optional<User> authenticateUser(String username, String plainPassword) {
         Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -87,18 +126,15 @@ public class UserService implements UserDetailsService {
                 if (user.getLockTime() != null) {
                     Calendar calendar = Calendar.getInstance();
                     calendar.setTime(user.getLockTime());
-                    calendar.add(Calendar.MINUTE, (int) LOCK_TIME_DURATION_MINUTES); // ロック期間を加算
+                    calendar.add(Calendar.MINUTE, (int) LOCK_TIME_DURATION_MINUTES);
 
                     if (calendar.getTime().before(new Date())) {
                         // ロック期間が経過した場合、ロックを解除し、失敗回数をリセット
                         user.setAccountLocked(false);
                         user.setLockTime(null);
                         user.setFailedLoginAttempts(0);
-                        userRepository.save(user); // ロック解除状態を保存
-                        // ロックが解除されたので、次のパスワードチェックに進む
+                        userRepository.save(user);
                     } else {
-                        // ★★★ 修正点: ロック期間中の場合は、ここで即座に認証失敗を返す ★★★
-                        // このreturnを追加することで、ロック中のアカウントはパスワードが正しくてもログインできないようになる
                         return Optional.empty(); // アカウントロック中のため認証失敗
                     }
                 }
@@ -107,23 +143,23 @@ public class UserService implements UserDetailsService {
             // アカウントがロックされていなかった、またはロックが解除された場合にのみパスワードをチェック
             if (passwordEncoder.matches(plainPassword, user.getPassword())) {
                 // 認証成功
-                user.setFailedLoginAttempts(0); // 失敗回数をリセット
-                user.setAccountLocked(false);   // ロック状態を解除
-                user.setLockTime(null);         // ロック時間をリセット
-                userRepository.save(user);      // 更新をDBに保存
+                user.setFailedLoginAttempts(0);
+                user.setAccountLocked(false);
+                user.setLockTime(null);
+                userRepository.save(user);
                 return Optional.of(user);
             } else {
                 // 認証失敗
-                user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1); // 失敗回数をインクリメント
+                user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
 
                 if (user.getFailedLoginAttempts() >= MAX_FAILED_ATTEMPTS) {
-                    user.setAccountLocked(true); // アカウントをロック
-                    user.setLockTime(new Date()); // ロック時刻を記録
+                    user.setAccountLocked(true);
+                    user.setLockTime(new Date());
                 }
-                userRepository.save(user); // 更新をDBに保存
-                return Optional.empty(); // 認証失敗
+                userRepository.save(user);
+                return Optional.empty();
             }
         }
-        return Optional.empty(); // ユーザーが見つからない場合も認証失敗
+        return Optional.empty();
     }
 }

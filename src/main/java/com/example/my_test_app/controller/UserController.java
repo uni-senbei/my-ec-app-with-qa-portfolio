@@ -5,11 +5,7 @@ import com.example.my_test_app.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.web.bind.annotation.*;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
@@ -55,7 +51,7 @@ public class UserController {
             return new ResponseEntity<>(response, HttpStatus.CREATED); // 201 Created
         } catch (IllegalArgumentException | IllegalStateException e) {
             // UserServiceで発生したビジネスロジックのエラーを捕捉
-            return new ResponseEntity<>(Collections.singletonMap("message", e.getMessage()), HttpStatus.BAD_REQUEST); // 400 Bad Request
+            return new ResponseEntity<>(Collections.singletonMap("message", e.getMessage()), HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
             // その他の予期せぬエラー
             return new ResponseEntity<>(Collections.singletonMap("message", "An unexpected error occurred during registration."), HttpStatus.INTERNAL_SERVER_ERROR);
@@ -85,8 +81,6 @@ public class UserController {
             if (authenticatedUser.isPresent()) {
                 // 認証成功
                 User user = authenticatedUser.get();
-                // 実際にはJWTトークンなどを生成して返すことが多いが、
-                // 今回は認証成功を示すシンプルなメッセージとユーザー情報の一部を返す
                 Map<String, Object> response = Map.of(
                         "message", "Login successful!",
                         "id", user.getId(),
@@ -94,14 +88,47 @@ public class UserController {
                         "email", user.getEmail(),
                         "role", user.getRole()
                 );
-                return new ResponseEntity<>(response, HttpStatus.OK); // 200 OK
+                return new ResponseEntity<>(response, HttpStatus.OK);
             } else {
                 // 認証失敗
-                return new ResponseEntity<>(Collections.singletonMap("message", "Invalid username or password."), HttpStatus.UNAUTHORIZED); // 401 Unauthorized
+                return new ResponseEntity<>(Collections.singletonMap("message", "Invalid username or password."), HttpStatus.UNAUTHORIZED);
             }
         } catch (Exception e) {
             // その他の予期せぬエラー
             return new ResponseEntity<>(Collections.singletonMap("message", "An unexpected error occurred during login."), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * パスワードをリセットするAPI (トークンと新しいパスワードを受け取る)
+     * PUT /api/users/reset-password
+     * リクエストボディ: { "token": "xxxx-xxxx-xxxx", "newPassword": "NewPassword123!" }
+     *
+     * @param requestMap トークンと新しいパスワードを含むマップ
+     * @return 処理結果メッセージ
+     */
+    @PutMapping("/reset-password")
+    public ResponseEntity<Object> resetPassword(@RequestBody Map<String, String> requestMap) {
+        String token = requestMap.get("token");
+        String newPassword = requestMap.get("newPassword");
+
+        if (token == null || token.isEmpty() || newPassword == null || newPassword.isEmpty()) {
+            return new ResponseEntity<>(Collections.singletonMap("message", "Token or new password is missing."), HttpStatus.BAD_REQUEST);
+        }
+
+        // パスワードの要件チェック（Controller側でも簡易的に行う）
+        if (newPassword.length() < 8) {
+            return new ResponseEntity<>(Collections.singletonMap("message", "New password must be at least 8 characters long."), HttpStatus.BAD_REQUEST);
+        }
+
+        boolean resetSuccess = userService.resetPassword(token, newPassword);
+
+        if (resetSuccess) {
+            return new ResponseEntity<>(Collections.singletonMap("message", "Password has been reset successfully."), HttpStatus.OK);
+        } else {
+            // resetPasswordメソッドの内部で、トークンが見つからない、期限切れ、ユーザーが見つからないなどの
+            // 詳細な理由がコンソールに出力されるため、ここでは一般的な失敗メッセージを返す
+            return new ResponseEntity<>(Collections.singletonMap("message", "Password reset failed. Invalid or expired token, or invalid password."), HttpStatus.BAD_REQUEST); // 400 Bad Request
         }
     }
 }

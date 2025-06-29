@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECサイト - 商品一覧</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+    <div class="container">
+        <h1><a href="/">ECサイト</a></h1>
+        <nav>
+            <ul>
+                <li><a href="#">ログイン</a></li>
+                <li><a href="#">カート (<span id="cart-count">0</span>)</a></li>
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<main class="container">
+    <h2>商品一覧</h2>
+    <div id="product-list" class="product-grid">
+        <p id="loading-message">商品データを読み込み中...</p>
+        <p id="error-message" class="error-text" style="display: none;">商品データの取得に失敗しました。</p>
+    </div>
+</main>
+
+<footer>
+    <div class="container">
+        <p>&copy; 2025 ECサイト. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="js/script.js"></script>
+</body>
+</html>
