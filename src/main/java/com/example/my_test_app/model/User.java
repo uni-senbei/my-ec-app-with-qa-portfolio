@@ -5,6 +5,8 @@ import lombok.Data; // @Getter, @Setter, @EqualsAndHashCode, @ToStringを含む
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
+import java.util.Date; // ★追加
+
 @Entity
 @Table(name = "users") // テーブル名を"user"ではなく"users"にする（SQL予約語との衝突を避けるため）
 @Data // @Getter, @Setter, @EqualsAndHashCode, @ToStringを自動生成
@@ -27,6 +29,18 @@ public class User {
 
     @Column(nullable = false)
     private String role; // 例: "USER", "ADMIN" など。★ユーザーの役割
+
+    // ★ここから追加フィールド
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0; // デフォルト値は0
+
+    @Column(name = "account_locked", nullable = false)
+    private boolean accountLocked = false; // デフォルト値はfalse
+
+    @Column(name = "lock_time") // ロックされた日時。nullable=trueにすることで、ロックされていない場合はNULLを許容
+    @Temporal(TemporalType.TIMESTAMP) // 日時型を指定
+    private Date lockTime;
+    // ★ここまで追加フィールド
 
     // ユーザーとカートは1対1の関係（このマッピングは、UserエンティティではUser認証に直接は必要ないが、
     // 将来的にユーザー情報取得時に紐づくカート情報を参照したい場合に必要となる。
