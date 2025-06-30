@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import com.example.my_test_app.exceptions.CartLimitExceededException; // ★追加: ここが複数形であることを確認！
 
 @Service
 public class CartService {
@@ -27,6 +28,9 @@ public class CartService {
     private final CartItemRepository cartItemRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+
+    // ★修正: カートの最大商品数（この定数名で後続のロジックが参照されます）
+    private static final int MAX_CART_ITEMS = 20; // 例として20個に設定
 
     @Autowired
     public CartService(CartRepository cartRepository, CartItemRepository cartItemRepository,
@@ -67,20 +71,21 @@ public class CartService {
             cartItem.setQuantity(cartItem.getQuantity() + quantity);
             cartItem = cartItemRepository.save(cartItem);
         } else {
-            // 新規アイテムの場合、種類数の最終チェック
-            Set<CartItem> currentCartItems = cart.getCartItems();
-            if (currentCartItems.size() >= 20) {
-                throw new IllegalStateException("カートに追加できる商品の種類は20個までです。");
+            // ★ここを修正: 新規アイテム追加の場合にのみ、種類数の上限をチェック
+            Set<CartItem> currentCartItems = cart.getCartItems(); // 現在カートに入っている商品アイテムのSet
+            if (currentCartItems.size() >= MAX_CART_ITEMS) { // 定数MAX_CART_ITEMSを使用
+                throw new CartLimitExceededException("カートに追加できる商品の種類は" + MAX_CART_ITEMS + "個までです。");
             }
 
             // 新しいアイテムとして追加
             cartItem = new CartItem(cart, product, quantity);
-            cart.getCartItems().add(cartItem);
+            cart.getCartItems().add(cartItem); // Cartエンティティのコレクションにも追加
 
             cartItem = cartItemRepository.save(cartItem);
         }
 
-        cartRepository.save(cart); // Cartエンティティの内部状態（cartItemsコレクション）が変更された可能性があるため保存
+        // Cartエンティティの内部状態（cartItemsコレクション）が変更された可能性があるため保存
+        cartRepository.save(cart);
 
         // ★保存されたCartItemエンティティをDTOに変換して返す
         return Optional.of(convertToCartItemDto(cartItem));
@@ -102,9 +107,9 @@ public class CartService {
 
         if (existingCartItemOptional.isPresent()) {
             CartItem cartItem = existingCartItemOptional.get();
-            cart.getCartItems().remove(cartItem);
+            cart.getCartItems().remove(cartItem); // Cartエンティティのコレクションから削除
             cartItemRepository.delete(cartItem);
-            cartRepository.save(cart);
+            cartRepository.save(cart); // Cartエンティティの変更を保存
             return true;
         }
         return false;
@@ -127,7 +132,7 @@ public class CartService {
 
         if (newQuantity == 0) {
             boolean removed = removeProductFromCart(userId, productId);
-            return removed ? Optional.empty() : Optional.empty();
+            return removed ? Optional.empty() : Optional.empty(); // 削除された場合は空のOptionalを返す
         }
 
         User user = userRepository.findById(userId)
@@ -145,10 +150,12 @@ public class CartService {
             CartItem cartItem = existingCartItemOptional.get();
             cartItem.setQuantity(newQuantity);
             cartItem = cartItemRepository.save(cartItem);
-            cartRepository.save(cart);
+            cartRepository.save(cart); // Cartエンティティの変更を保存
 
             return Optional.of(convertToCartItemDto(cartItem));
         } else {
+            // 既存のアイテムがない場合、新しいアイテムとして追加
+            // この場合も数量チェックが必要ですが、addProductToCart内で既に実施されるためここでは不要
             return addProductToCart(userId, productId, newQuantity);
         }
     }
@@ -162,8 +169,8 @@ public class CartService {
                 .orElseThrow(() -> new RuntimeException("Cart not found for user: " + userId));
 
         cartItemRepository.deleteByCartId(cart.getId());
-        cart.getCartItems().clear();
-        cartRepository.save(cart);
+        cart.getCartItems().clear(); // Cartエンティティのコレクションもクリア
+        cartRepository.save(cart); // Cartエンティティの変更を保存
     }
 
     // ========== エンティティからDTOへの変換ヘルパーメソッド ==========
@@ -175,8 +182,8 @@ public class CartService {
                 cartItem.getProduct().getName(),
                 cartItem.getProduct().getDescription(),
                 cartItem.getProduct().getPrice(),
-                cartItem.getProduct().getType(),    // ★ type を先に変更
-                cartItem.getProduct().getImageUrl() // ★ imageUrl を後に変更
+                cartItem.getProduct().getType(),
+                cartItem.getProduct().getImageUrl()
         );
         return new CartItemDto(cartItem.getId(), cartItem.getQuantity(), productDto);
     }

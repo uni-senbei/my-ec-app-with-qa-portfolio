@@ -1,10 +1,15 @@
+更新後の開発タスクリスト（優先度・ステータス反映版）
 開発タスクリスト（優先度・ステータス反映版）
 
 最優先タスク
 
 カート機能:
 
-[ ] カートの最大商品数オーバー時の振る舞い実装 (Controller/Exception HandlingでのHTTPステータスとJSONレスポンスの返却)
+[x] カートの最大商品数オーバー時の振る舞い実装 (Controller/Exception HandlingでのHTTPステータスとJSONレスポンスの返却)
+    - CartServiceに最大商品数チェックロジックを追加
+    - CartLimitExceededExceptionを定義
+    - GlobalExceptionHandlerでCartLimitExceededExceptionをハンドル
+    - Postmanで動作確認
 
 高優先度タスク
 
