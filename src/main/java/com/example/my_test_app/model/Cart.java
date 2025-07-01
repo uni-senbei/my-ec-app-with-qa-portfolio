@@ -1,16 +1,14 @@
 package com.example.my_test_app.model;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // 追加
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-import org.hibernate.annotations.CreationTimestamp; // ★ 追加
-import org.hibernate.annotations.UpdateTimestamp;   // ★ 追加
 
-import java.util.Date;      // ★ 追加
 import java.util.HashSet;
 import java.util.Set;
 
@@ -20,6 +18,7 @@ import java.util.Set;
 @Setter
 @NoArgsConstructor
 @EqualsAndHashCode(of = "id")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // 追加
 public class Cart {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,11 +27,15 @@ public class Cart {
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)
     @ToString.Exclude
+    @JsonIgnoreProperties("cart") // 追加
     private User user;
 
     @OneToMany(mappedBy = "cart", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference("cart-items") // 識別子を追加
+    @ToString.Exclude // 既存（前回修正済み）
     private Set<CartItem> cartItems = new HashSet<>();
+
+    // ... 他のフィールドは変更なし ...
 
     /*
     // ★ ここから lastModifiedDate 関連を再有効化
